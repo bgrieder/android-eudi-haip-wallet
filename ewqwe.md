@@ -35,15 +35,18 @@ You must use a rootable emulator image (Google APIs, non-Play Store) and start i
 *   When prompted for the country, select **"Form EU"**.
 *   Fill in the test form, submit it, and authorize the issuance.
 
-### 4. Open the Demo Webapp
+### 4. Open the Relying Party Demo Webapp
 *   Start your local **ewqwe demo webapp** (following the instructions in its own repository).
 *   Open the **Chrome** browser on the Android Emulator.
-*   Navigate to: `https://ewqwe.local:5174`
-*   The Demo webapp should appear. Because of our TLS bypasses, you should be able to proceed even if the webapp uses a self-signed certificate.
+*   Navigate to: `https://ewqwe.local:5174`, and proceed despite the certificate warnings; they are due to our using a self-signed certificate on the Demo Webapp.
+*   The Demo webapp should appear.
 
 ### 5. Request HAIP Credentials
 *   From the webapp, initiate a request for HAIP credentials for the documents you just created.
-*   This action should trigger a deep link that opens the **EUDI HAIP wallet**.
+*   This action should trigger a deep link that opens the **EUDI HAIP wallet**. 
+*   Because of our TLS bypasses, the wallet should be able to proceed and send the credentials to the demo webapp.
+
+
 
 ---
 
@@ -59,10 +62,6 @@ The `HttpClient` bypasses standard X509 certificate validation to allow connecti
 A `SoftReaderTrustStore` bypasses the `x5c` chain validation against trusted IACAs and logs a warning instead.
 *   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
 *   **Integration:** `core-logic/.../di/LogicCoreModule.kt`
-
-### 3. Client ID Bypass (SAN Injection)
-OpenID4VP requires that the `client_id` matches a Subject Alternative Name (SAN) in the certificate. `SoftReaderTrustStore` wraps certificates to dynamically inject common development SANs (like `127.0.0.1`, `localhost`, `192.168.1.x`).
-*   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
 
 ---
 
