@@ -33,6 +33,12 @@ import kotlinx.serialization.json.Json
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Module
 import org.koin.core.annotation.Single
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 @Module
 @ComponentScan("eu.europa.ec.networklogic")
@@ -48,6 +54,22 @@ fun provideJson(): Json = Json {
 @Single
 fun provideHttpClient(json: Json, configLogic: ConfigLogic): HttpClient {
     return HttpClient(Android) {
+
+//        if (configLogic.appBuildType == AppBuildType.DEBUG) {
+            engine {
+                sslManager = { connection ->
+                    val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                    })
+                    val sslContext = SSLContext.getInstance("TLS")
+                    sslContext.init(null, trustAllCerts, SecureRandom())
+                    connection.sslSocketFactory = sslContext.socketFactory
+                    connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+                }
+            }
+//        }
 
         install(Logging) {
             logger = Logger.DEFAULT

@@ -29,6 +29,8 @@ import eu.europa.ec.corelogic.controller.WalletCoreTransactionLogController
 import eu.europa.ec.corelogic.controller.WalletCoreTransactionLogControllerImpl
 import eu.europa.ec.corelogic.provider.WalletCoreAttestationProvider
 import eu.europa.ec.corelogic.provider.WalletCoreAttestationProviderImpl
+import eu.europa.ec.corelogic.util.SoftReaderTrustStore
+import eu.europa.ec.eudi.iso18013.transfer.readerauth.ReaderTrustStore
 import eu.europa.ec.eudi.wallet.EudiWallet
 import eu.europa.ec.networklogic.repository.WalletAttestationRepository
 import eu.europa.ec.resourceslogic.provider.ResourceProvider
@@ -42,6 +44,7 @@ import org.koin.core.annotation.Module
 import org.koin.core.annotation.Scope
 import org.koin.core.annotation.Single
 import org.koin.mp.KoinPlatform
+import java.security.cert.X509Certificate
 
 const val PRESENTATION_SCOPE_ID = "presentation_scope_id"
 
@@ -56,15 +59,22 @@ fun provideEudiWallet(
     walletCoreLogController: WalletCoreLogController,
     walletCoreTransactionLogController: WalletCoreTransactionLogController,
     walletCoreAttestationProvider: WalletCoreAttestationProvider,
-    httpClient: HttpClient
-): EudiWallet = EudiWallet(
-    context = context,
-    config = walletCoreConfig.config,
-    walletProvider = walletCoreAttestationProvider
-) {
-    withLogger(walletCoreLogController)
-    withTransactionLogger(walletCoreTransactionLogController)
-    withKtorHttpClientFactory { httpClient }
+    httpClient: HttpClient,
+    logController: LogController
+): EudiWallet {
+    val readerTrustStore = ReaderTrustStore.getDefault(emptyList<X509Certificate>())
+    val softReaderTrustStore = SoftReaderTrustStore(readerTrustStore, logController)
+
+    return EudiWallet(
+        context = context,
+        config = walletCoreConfig.config,
+        walletProvider = walletCoreAttestationProvider
+    ) {
+        withLogger(walletCoreLogController)
+        withTransactionLogger(walletCoreTransactionLogController)
+        withKtorHttpClientFactory { httpClient }
+        withReaderTrustStore(softReaderTrustStore)
+    }
 }
 
 @Single

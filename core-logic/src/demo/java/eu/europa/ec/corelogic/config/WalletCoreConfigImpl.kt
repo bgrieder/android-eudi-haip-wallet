@@ -73,8 +73,8 @@ internal class WalletCoreConfigImpl(
                         R.raw.pidissuerca02_ut,
                         R.raw.dc4eu,
                         R.raw.r45_staging,
-                        R.raw.isrg_root_x1,
-                        R.raw.isrg_root_x2
+                        R.raw.isrg_root_x1, // Let's Encrypt Root added to facilitate testing
+                        R.raw.isrg_root_x2  // Let's Encrypt Root added to facilitate testing
                     )
                 }
             }
