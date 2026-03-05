@@ -21,9 +21,10 @@ import android.os.Bundle
 fun Bundle?.toMapOrEmpty(): Map<String, String> {
     return this?.let { bundle ->
         mutableMapOf<String, String>().apply {
-            bundle.keySet().forEach {
-                bundle.getString(it)?.let { value ->
-                    put(it, value)
+            bundle.keySet().forEach { key ->
+                @Suppress("DEPRECATION")
+                bundle.get(key)?.let { value ->
+                    put(key, value.toString())
                 }
             }
         }
