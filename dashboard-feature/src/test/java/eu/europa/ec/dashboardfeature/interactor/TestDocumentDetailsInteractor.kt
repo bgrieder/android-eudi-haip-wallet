@@ -16,12 +16,14 @@
 
 package eu.europa.ec.dashboardfeature.interactor
 
+import eu.europa.ec.businesslogic.config.ConfigLogic
 import eu.europa.ec.businesslogic.provider.UuidProvider
 import eu.europa.ec.corelogic.controller.DeleteAllDocumentsPartialState
 import eu.europa.ec.corelogic.controller.DeleteDocumentPartialState
 import eu.europa.ec.corelogic.controller.WalletCoreDocumentsController
 import eu.europa.ec.corelogic.model.ClaimDomain
 import eu.europa.ec.corelogic.model.ClaimPathDomain
+import eu.europa.ec.corelogic.model.ClaimType
 import eu.europa.ec.corelogic.model.DocumentIdentifier
 import eu.europa.ec.dashboardfeature.ui.documents.detail.model.DocumentDetailsDomain
 import eu.europa.ec.dashboardfeature.ui.documents.model.DocumentCredentialsInfoUi
@@ -80,6 +82,9 @@ class TestDocumentDetailsInteractor {
     @Mock
     private lateinit var uuidProvider: UuidProvider
 
+    @Mock
+    private lateinit var configLogic: ConfigLogic
+
     private lateinit var interactor: DocumentDetailsInteractor
 
     private lateinit var closeable: AutoCloseable
@@ -92,10 +97,12 @@ class TestDocumentDetailsInteractor {
             walletCoreDocumentsController = walletCoreDocumentsController,
             resourceProvider = resourceProvider,
             uuidProvider = uuidProvider,
+            configLogic = configLogic
         )
 
         whenever(resourceProvider.genericErrorMessage()).thenReturn(mockedGenericErrorMessage)
         whenever(resourceProvider.getLocale()).thenReturn(mockedDefaultLocale)
+        whenever(configLogic.forcePidActivation).thenReturn(true)
     }
 
     @After
@@ -400,7 +407,10 @@ class TestDocumentDetailsInteractor {
                                     key = "no_data_item",
                                     value = "0",
                                     displayTitle = "no_data_item",
-                                    path = ClaimPathDomain(value = listOf("no_data_item")),
+                                    path = ClaimPathDomain(
+                                        value = listOf("no_data_item"),
+                                        type = ClaimType.MsoMdoc(namespace = mockedMdocPidNameSpace)
+                                    ),
                                     isRequired = false,
                                 ),
                             ),

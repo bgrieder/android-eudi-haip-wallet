@@ -34,7 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +44,7 @@ import eu.europa.ec.commonfeature.ui.request.model.RequestDocumentItemUi
 import eu.europa.ec.commonfeature.util.TestTag
 import eu.europa.ec.corelogic.model.ClaimDomain
 import eu.europa.ec.corelogic.model.ClaimPathDomain
+import eu.europa.ec.corelogic.model.ClaimType
 import eu.europa.ec.resourceslogic.R
 import eu.europa.ec.resourceslogic.theme.values.warning
 import eu.europa.ec.uilogic.component.AppIcons
@@ -75,6 +75,7 @@ import eu.europa.ec.uilogic.component.wrap.TextConfig
 import eu.europa.ec.uilogic.component.wrap.WrapExpandableListItem
 import eu.europa.ec.uilogic.component.wrap.WrapModalBottomSheet
 import eu.europa.ec.uilogic.component.wrap.WrapStickyBottomContent
+import eu.europa.ec.uilogic.extension.applyTestTag
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -104,7 +105,7 @@ fun RequestScreen(
         stickyBottom = { paddingValues ->
             WrapStickyBottomContent(
                 modifier = Modifier
-                    .testTag(TestTag.RequestScreen.BUTTON)
+                    .applyTestTag(TestTag.RequestScreen.BUTTON)
                     .fillMaxWidth()
                     .padding(paddingValues),
                 stickyBottomConfig = StickyBottomConfig(
@@ -259,7 +260,7 @@ private fun DisplayRequestItems(
                 requestDocuments.forEachIndexed { index, requestDocument ->
                     WrapExpandableListItem(
                         modifier = Modifier
-                            .testTag(TestTag.RequestScreen.requestedDocument(index = index))
+                            .applyTestTag(TestTag.RequestScreen.requestedDocument(index = index))
                             .fillMaxWidth(),
                         header = requestDocument.headerUi.header,
                         data = requestDocument.headerUi.nestedItems,
@@ -333,14 +334,17 @@ private fun ContentPreview() {
                         domainPayload = DocumentPayloadDomain(
                             docName = "docName",
                             docId = "docId",
-                            domainDocFormat = DomainDocumentFormat.MsoMdoc(namespace = "pid"),
+                            domainDocFormat = DomainDocumentFormat.MsoMdoc,
                             docClaimsDomain = listOf(
                                 ClaimDomain.Primitive(
                                     key = "key",
                                     displayTitle = "title",
                                     value = "value",
                                     isRequired = false,
-                                    path = ClaimPathDomain(value = listOf())
+                                    path = ClaimPathDomain(
+                                        value = listOf(),
+                                        type = ClaimType.MsoMdoc(namespace = "namespace")
+                                    )
                                 ),
                             )
                         ),
