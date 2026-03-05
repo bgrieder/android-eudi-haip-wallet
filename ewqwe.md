@@ -1,52 +1,74 @@
-# Development Bypass for Untrusted Certificates (Testing Only)
+# Running the wallet with the ewQwe Credential Demo Web App
 
 :warning: **IMPORTANT: FOR TESTING ONLY** :warning:
 The modifications described in this document are strictly for development and testing purposes. They intentionally weaken the security of the application to allow interoperability with development environments that use self-signed certificates or untrusted CAs. **These changes MUST NOT be used in a production environment.**
 
 ---
 
-## Overview
+## Setup and Demo Instructions
 
-In a production environment, the EUDI Wallet strictly validates the identity of the parties it communicates with. This includes:
-1.  **TLS Server Authentication:** Ensuring the HTTPS connection to a Relying Party (RP) or Issuer is secure and trusted.
-2.  **Request Signing (Reader Authentication):** Ensuring that an OpenID4VP request (received via `x5c` or `jwks`) is signed by a trusted entity.
+To test the HAIP wallet with a local development environment, follow these steps:
 
-During development, these parties often use self-signed certificates, which would normally cause the Wallet to reject the connection or the request. This document describes the "Soft Trust" bypasses implemented to facilitate testing.
+### 1. Create and Start the Emulator
+You must use a rootable emulator image (Google APIs, non-Play Store) and start it with a writable system partition to allow host redirection.
+
+*   Run the following script from the project root:
+    ```bash
+    ./start_ewqwe_eudi_emulator.sh
+    ```
+*   **What this script does:**
+    1.  Automatically installs the correct Android system image if missing.
+    2.  Creates a custom AVD named `EUDI_Dev_Device` using a **Pixel 6 Pro** profile.
+    3.  Enables **hardware keyboard passthrough** so you can type using your computer.
+    4.  Starts the emulator with the `-writable-system` flag.
+    5.  **Important:** It maps the hostname `ewqwe.local` inside the emulator to your machine's actual local IP address. This allows the wallet to resolve local development servers.
+
+### 2. Run the Application
+*   Open the project in Android Studio.
+*   Select the `app` module and the `EUDI_Dev_Device` emulator.
+*   Click **Run** to deploy and start the EUDI Wallet App.
+
+### 3. Initialize Documents
+*   Follow the on-screen instructions to create a **PIN Code**.
+*   Tap the **"+"** icon and select **"Add a Document from List"**.
+*   Select **"mDL (MSO MDOC)"** and **"PID (MSO MDOC)"** under the list `https://euidw.dev`.
+*   When prompted for the country, select **"Form EU"**.
+*   Fill in the test form, submit it, and authorize the issuance.
+
+### 4. Open the Demo Webapp
+*   Start your local **ewqwe demo webapp** (following the instructions in its own repository).
+*   Open the **Chrome** browser on the Android Emulator.
+*   Navigate to: `https://ewqwe.local:5174`
+*   The Demo webapp should appear. Because of our TLS bypasses, you should be able to proceed even if the webapp uses a self-signed certificate.
+
+### 5. Request HAIP Credentials
+*   From the webapp, initiate a request for HAIP credentials for the documents you just created.
+*   This action should trigger a deep link that opens the **EUDI HAIP wallet**.
 
 ---
 
-## Modifications
+## Technical Overview of Modifications
+
+In a production environment, the EUDI Wallet strictly validates the identity of the parties it communicates with. During development, these parties often use self-signed certificates. We have implemented "Soft Trust" bypasses to facilitate testing.
 
 ### 1. Untrusted TLS Certificates (Network Layer)
-
-The `HttpClient` has been modified to bypass standard X509 certificate validation. This allows the wallet to perform HTTP requests (e.g., fetching a request object or posting a response) to development servers using self-signed certificates.
-
-*   **File:** `network-logic/src/main/java/eu/europa/ec/networklogic/di/NetworkModule.kt`
-*   **Modification:** Configured an `X509TrustManager` that performs no checks and a `HostnameVerifier` that accepts all hostnames.
+The `HttpClient` bypasses standard X509 certificate validation to allow connections to local development servers.
+*   **File:** `network-logic/.../di/NetworkModule.kt`
 
 ### 2. Untrusted OpenID4VP Request Signers (Reader Trust)
-
-The `EudiWallet` core library normally validates the `x5c` chain in an OpenID4VP request against a list of trusted IACAs. We have introduced a `SoftReaderTrustStore` to bypass this check and log a warning instead.
-
-*   **File:** `core-logic/src/main/java/eu/europa/ec/corelogic/util/SoftReaderTrustStore.kt`
-*   **Modification:** Created a wrapper around `ReaderTrustStore` that always returns `true` for `validateCertificationTrustPath`.
-*   **File:** `core-logic/src/main/java/eu/europa/ec/corelogic/di/LogicCoreModule.kt`
-*   **Modification:** Injected the `SoftReaderTrustStore` into the `EudiWallet` instance via `withReaderTrustStore`.
+A `SoftReaderTrustStore` bypasses the `x5c` chain validation against trusted IACAs and logs a warning instead.
+*   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
+*   **Integration:** `core-logic/.../di/LogicCoreModule.kt`
 
 ### 3. Client ID Bypass (SAN Injection)
-
-OpenID4VP requires that the `client_id` matches a Subject Alternative Name (SAN) in the certificate. To support testing with various hostnames/IPs (like `127.0.0.1` or local network IPs), the `SoftReaderTrustStore` wraps the certificates to dynamically inject these SANs.
-
-*   **File:** `core-logic/src/main/java/eu/europa/ec/corelogic/util/SoftReaderTrustStore.kt`
-*   **Modification:** Added `SoftX509Certificate` which overrides `getSubjectAlternativeNames()` to include development hostnames.
+OpenID4VP requires that the `client_id` matches a Subject Alternative Name (SAN) in the certificate. `SoftReaderTrustStore` wraps certificates to dynamically inject common development SANs (like `127.0.0.1`, `localhost`, `192.168.1.x`).
+*   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
 
 ---
 
 ## How it works (Production vs. Testing)
 
 ### Production Flow (Strict Trust)
-In a real-life scenario, the Verifier must present a certificate issued by a trusted Member State CA (IACA). The Wallet verifies the entire chain.
-
 ```mermaid
 sequenceDiagram
     participant V as Verifier (RP)
@@ -65,8 +87,6 @@ sequenceDiagram
 ```
 
 ### Testing Flow (Soft Trust Bypass)
-The "Soft Trust" implementation intercepts the validation results. If a chain is untrusted, it logs a warning but tells the Wallet Core that the validation was successful.
-
 ```mermaid
 sequenceDiagram
     participant V as Dev Verifier (Self-Signed)
@@ -83,14 +103,3 @@ sequenceDiagram
     W->>Core: Process Request
     Note over Core: Request is accepted
 ```
-
----
-
-## Summary of Code Changes
-
-| Feature | Modification | File Path |
-| :--- | :--- | :--- |
-| **TLS Bypass** | Custom `X509TrustManager` accepting all certs | `network-logic/.../di/NetworkModule.kt` |
-| **Reader Trust Bypass** | `SoftReaderTrustStore` wrapper returning `true` | `core-logic/.../util/SoftReaderTrustStore.kt` |
-| **Wallet Integration** | Injecting `SoftReaderTrustStore` into `EudiWallet` | `core-logic/.../di/LogicCoreModule.kt` |
-| **Client ID Bypass** | Dynamic SAN injection in `SoftX509Certificate` | `core-logic/.../util/SoftReaderTrustStore.kt` |
