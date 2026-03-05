@@ -1,9 +1,10 @@
-# EUDI Android Wallet reference application
+# EUDI Android Wallet reference application modified to run with the ewQwe Relying Party Demo Web App 
 
 :warning: **Development Note:** This project contains modifications to be run
 in a local Android emulator
 together with the ewQwe Demo Webapp. See [ewqwe.md](ewqwe.md) for details.
 
+---
 
 :heavy_exclamation_mark: **Important!** Before you proceed, please read
 the [EUDI Wallet Reference Implementation project description](https://github.com/eu-digital-identity-wallet/.github/blob/main/profile/reference-implementation.md)
