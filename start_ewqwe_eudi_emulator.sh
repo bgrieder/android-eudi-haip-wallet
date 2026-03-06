@@ -2,10 +2,8 @@
 
 # --- Configuration ---
 AVD_NAME="EUDI_Dev_Device"
-# Using a larger device profile (Pixel 6 Pro)
-DEVICE_PROFILE="pixel_6_pro"
+DEVICE_PROFILE="pixel_9"
 
-# Change to "x86_64" if on an Intel Mac or Linux PC
 ARCH=$(uname -m)
 if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
     SYS_IMG="system-images;android-34;google_apis;arm64-v8a"
@@ -13,7 +11,6 @@ else
     SYS_IMG="system-images;android-34;google_apis;x86_64"
 fi
 
-# 1. Detect SDK path based on OS (MacOS vs Linux)
 if [ -z "$ANDROID_SDK_ROOT" ]; then
     if [ "$(uname)" = "Darwin" ]; then
         ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
@@ -25,7 +22,6 @@ fi
 ADB="$ANDROID_SDK_ROOT/platform-tools/adb"
 EMULATOR="$ANDROID_SDK_ROOT/emulator/emulator"
 
-# Search for avdmanager and sdkmanager
 find_tool() {
     tool_name=$1
     for path in "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/$tool_name" \
@@ -42,110 +38,74 @@ find_tool() {
 SDKMANAGER=$(find_tool sdkmanager)
 AVDMANAGER=$(find_tool avdmanager)
 
-# 2. Check if the rootable AVD exists
-if ! "$EMULATOR" -list-avds | grep -q "^$AVD_NAME$"; then
-    echo "AVD '$AVD_NAME' not found. Attempting to create it..."
+# Robust profile check
+AVD_INI="$HOME/.android/avd/$AVD_NAME.avd/config.ini"
+EXISTING_PROFILE=$(grep -E "hw.device.name|device.name" "$AVD_INI" 2>/dev/null | cut -d'=' -f2)
 
-    if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
-        echo "Error: sdkmanager not found in $ANDROID_SDK_ROOT"
-        echo "Please install 'Android SDK Command-line Tools' in Android Studio."
-        exit 1
-    fi
-
-    echo "Installing system image $SYS_IMG..."
-    yes | "$SDKMANAGER" --install "$SYS_IMG"
-
-    echo "Creating AVD with profile $DEVICE_PROFILE..."
-    # -d specifies the device profile
-    echo "no" | "$AVDMANAGER" create avd -n "$AVD_NAME" -k "$SYS_IMG" -d "$DEVICE_PROFILE" --force
-
-    # Enable hardware keyboard in config.ini
-    AVD_CONFIG="$HOME/.android/avd/$AVD_NAME.avd/config.ini"
-    if [ -f "$AVD_CONFIG" ]; then
-        echo "Enabling hardware keyboard and soft keys..."
-        sed -i.bak '/hw.keyboard/d' "$AVD_CONFIG"
-        echo "hw.keyboard=yes" >> "$AVD_CONFIG"
-        sed -i.bak '/hw.mainKeys/d' "$AVD_CONFIG"
-        echo "hw.mainKeys=no" >> "$AVD_CONFIG"
-    fi
+if [ -n "$EXISTING_PROFILE" ] && [ "$EXISTING_PROFILE" != "$DEVICE_PROFILE" ]; then
+    echo "Existing AVD has profile '$EXISTING_PROFILE', but '$DEVICE_PROFILE' is requested."
+    echo "Deleting old AVD to apply new profile..."
+    "$AVDMANAGER" delete avd -n "$AVD_NAME"
 fi
 
-# 3. Check if the emulator is already running
+if ! "$EMULATOR" -list-avds | grep -q "^$AVD_NAME$"; then
+    echo "AVD '$AVD_NAME' not found. Creating with profile $DEVICE_PROFILE..."
+    yes | "$SDKMANAGER" --install "$SYS_IMG"
+    echo "no" | "$AVDMANAGER" create avd -n "$AVD_NAME" -k "$SYS_IMG" -d "$DEVICE_PROFILE" --force
+fi
+
+# Apply Hardware Config
+if [ -f "$AVD_INI" ]; then
+    echo "Forcing VirtualScene Camera, Keyboard and Performance config..."
+    sed -i.bak -e '/hw.keyboard/d' -e '/hw.camera.back/d' -e '/hw.camera.front/d' \
+               -e '/hw.mainKeys/d' -e '/hw.gpu.enabled/d' -e '/hw.gpu.mode/d' \
+               -e '/hw.ramSize/d' -e '/vm.heapSize/d' "$AVD_INI"
+    {
+        echo "hw.keyboard=yes"
+        echo "hw.camera.back=virtualscene"
+        echo "hw.camera.front=emulated"
+        echo "hw.mainKeys=no"
+        echo "hw.gpu.enabled=yes"
+        echo "hw.gpu.mode=host"
+        echo "hw.ramSize=4096"
+        echo "vm.heapSize=512"
+    } >> "$AVD_INI"
+    rm "$AVD_INI.bak" 2>/dev/null
+fi
+
 SERIAL=$($ADB devices | grep emulator | head -n 1 | awk '{print $1}')
-
 if [ -z "$SERIAL" ]; then
-    echo "Starting emulator '$AVD_NAME' with writable system..."
+    echo "Starting emulator..."
     "$EMULATOR" -avd "$AVD_NAME" -writable-system -no-snapshot-load > /dev/null 2>&1 &
-
-    echo "Waiting for device to appear..."
     "$ADB" wait-for-device
     SERIAL=$($ADB devices | grep emulator | head -n 1 | awk '{print $1}')
-else
-    # Check if the running emulator is rootable
-    RUNNING_AVD=$($ADB -s "$SERIAL" emu avd name 2>/dev/null | head -n 1 | tr -d '\r')
-    echo "Emulator '$RUNNING_AVD' is already running ($SERIAL)."
-
-    FLAVOR=$($ADB -s "$SERIAL" shell getprop ro.build.flavor 2>/dev/null)
-    if echo "$FLAVOR" | grep -q "playstore"; then
-        echo "WARNING: The running emulator has Play Store. Rooting will fail."
-        echo "Please close it and run this script again."
-        exit 1
-    fi
 fi
 
-# 4. Get the local IP address
 if [ "$(uname)" = "Darwin" ]; then
     LOCAL_IP=$(ipconfig getifaddr en0 || ipconfig getifaddr en1)
 else
     LOCAL_IP=$(hostname -I | awk '{print $1}')
 fi
 
-echo "Using Local IP: $LOCAL_IP"
+echo "Waiting for boot..."
+while [ "$($ADB -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 2; done
 
-# 5. Root and Remount logic
-echo "Waiting for boot to complete..."
-while [ "$($ADB -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do
-    sleep 2
-done
-
-echo "Gaining root access..."
+echo "Setting up root/remount..."
 "$ADB" -s "$SERIAL" root
-sleep 3
+sleep 2
 "$ADB" -s "$SERIAL" wait-for-device
-
-# Disable AVB verification
-VERITY_STATE=$($ADB -s "$SERIAL" shell getprop partition.system.verified)
-if [ "$VERITY_STATE" != "" ]; then
-    echo "Disabling AVB verification..."
-    "$ADB" -s "$SERIAL" shell avbctl disable-verification
-    "$ADB" -s "$SERIAL" reboot
-    echo "Rebooting to apply verification changes..."
-    "$ADB" -s "$SERIAL" wait-for-device
-    sleep 5
-    "$ADB" -s "$SERIAL" root
-    sleep 3
-    "$ADB" -s "$SERIAL" wait-for-device
-fi
-
-echo "Remounting /system as writable..."
+"$ADB" -s "$SERIAL" shell avbctl disable-verification > /dev/null 2>&1
+"$ADB" -s "$SERIAL" reboot
+"$ADB" -s "$SERIAL" wait-for-device
+"$ADB" -s "$SERIAL" root
+sleep 2
 "$ADB" -s "$SERIAL" remount
 
-if [ $? -ne 0 ]; then
-    echo "Error: Remount failed. Ensure you started the emulator with '-writable-system'."
-    exit 1
-fi
-
-# 6. Update hosts
-echo "Updating hosts file..."
+echo "Updating hosts..."
 "$ADB" -s "$SERIAL" pull /system/etc/hosts ./android-hosts
 sed -i.bak '/ewqwe.local/d' ./android-hosts
 echo "$LOCAL_IP    ewqwe.local" >> ./android-hosts
 "$ADB" -s "$SERIAL" push ./android-hosts /system/etc/hosts
-
-if [ $? -eq 0 ]; then
-    echo "SUCCESS: 'ewqwe.local' now points to $LOCAL_IP on the emulator."
-else
-    echo "FAILURE: Could not update hosts file."
-fi
-
 rm ./android-hosts ./android-hosts.bak 2>/dev/null
+
+echo "SUCCESS: Emulator ready at $LOCAL_IP"
