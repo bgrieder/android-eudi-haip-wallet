@@ -26,14 +26,15 @@ You must use a rootable emulator image (Google APIs, non-Play Store) and start i
 ### 2. Run the Application
 *   Open the project in Android Studio.
 *   Select the `app` module and the `EUDI_Dev_Device` emulator.
-*   Click **Run** to deploy and start the EUDI Wallet App.
+*   Click **Run** to deploy and start the EUDI Wallet App on the device.
 
 ### 3. Initialize Documents
 *   Follow the on-screen instructions to create a **PIN Code**.
+*   Test documents and credentials can be obtained from the **EUDIW Testing Issuer** at `https://issuer.eudiw.dev`.
 *   Tap the **"+"** icon and select **"Add a Document from List"**.
-*   Select **"mDL (MSO MDOC)"** and **"PID (MSO MDOC)"** under the list `https://euidw.dev`.
-*   When prompted for the country, select **"Form EU"**.
-*   Fill in the test form, submit it, and authorize the issuance.
+*   Select **"mDL (MSO MDOC)"** and **"PID (MSO MDOC)"** from the list (pointing to `https://issuer.eudiw.dev`).
+*   When prompted for the country, select **"Form EU"** as the country of origin.
+*   Fill in the test form with any data, submit it, and authorize the issuance.
 
 ### 4. Open the Relying Party Demo Webapp
 *   Start your local **ewqwe demo webapp** (following the instructions in its own repository).
@@ -43,10 +44,8 @@ You must use a rootable emulator image (Google APIs, non-Play Store) and start i
 
 ### 5. Request HAIP Credentials
 *   From the webapp, initiate a request for HAIP credentials for the documents you just created.
-*   This action should trigger a deep link that opens the **EUDI HAIP wallet**. 
+*   This action should trigger a deep link that opens the **EUDI HAIP wallet** automatically.
 *   Because of our TLS bypasses, the wallet should be able to proceed and send the credentials to the demo webapp.
-
-
 
 ---
 
@@ -62,6 +61,10 @@ The `HttpClient` bypasses standard X509 certificate validation to allow connecti
 A `SoftReaderTrustStore` bypasses the `x5c` chain validation against trusted IACAs and logs a warning instead.
 *   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
 *   **Integration:** `core-logic/.../di/LogicCoreModule.kt`
+
+### 3. Client ID Bypass (SAN Injection)
+OpenID4VP requires that the `client_id` matches a Subject Alternative Name (SAN) in the certificate. `SoftReaderTrustStore` wraps certificates to dynamically inject common development SANs (like `127.0.0.1`, `localhost`, `192.168.1.x`).
+*   **File:** `core-logic/.../util/SoftReaderTrustStore.kt`
 
 ---
 
