@@ -103,8 +103,8 @@ sleep 2
 
 echo "Updating hosts..."
 "$ADB" -s "$SERIAL" pull /system/etc/hosts ./android-hosts
-sed -i.bak '/ewqwe.local/d' ./android-hosts
-echo "$LOCAL_IP    ewqwe.local" >> ./android-hosts
+sed -i.bak '/demo.ewqwe.local/d' ./android-hosts
+echo "$LOCAL_IP    demo.ewqwe.local" >> ./android-hosts
 "$ADB" -s "$SERIAL" push ./android-hosts /system/etc/hosts
 rm ./android-hosts ./android-hosts.bak 2>/dev/null
 

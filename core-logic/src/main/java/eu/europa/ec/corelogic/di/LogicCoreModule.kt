@@ -17,6 +17,8 @@
 package eu.europa.ec.corelogic.di
 
 import android.content.Context
+import eu.europa.ec.businesslogic.config.AppBuildType
+import eu.europa.ec.businesslogic.config.ConfigLogic
 import eu.europa.ec.businesslogic.controller.log.LogController
 import eu.europa.ec.businesslogic.provider.UuidProvider
 import eu.europa.ec.corelogic.config.WalletCoreConfig
@@ -29,7 +31,6 @@ import eu.europa.ec.corelogic.controller.WalletCoreTransactionLogController
 import eu.europa.ec.corelogic.controller.WalletCoreTransactionLogControllerImpl
 import eu.europa.ec.corelogic.provider.WalletCoreAttestationProvider
 import eu.europa.ec.corelogic.provider.WalletCoreAttestationProviderImpl
-import eu.europa.ec.corelogic.util.SoftReaderTrustStore
 import eu.europa.ec.eudi.iso18013.transfer.readerauth.ReaderTrustStore
 import eu.europa.ec.eudi.wallet.EudiWallet
 import eu.europa.ec.networklogic.repository.WalletAttestationRepository
@@ -44,6 +45,7 @@ import org.koin.core.annotation.Module
 import org.koin.core.annotation.Scope
 import org.koin.core.annotation.Single
 import org.koin.mp.KoinPlatform
+import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 
 const val PRESENTATION_SCOPE_ID = "presentation_scope_id"
@@ -60,11 +62,8 @@ fun provideEudiWallet(
     walletCoreTransactionLogController: WalletCoreTransactionLogController,
     walletCoreAttestationProvider: WalletCoreAttestationProvider,
     httpClient: HttpClient,
-    logController: LogController
+    configLogic: ConfigLogic
 ): EudiWallet {
-    val readerTrustStore = ReaderTrustStore.getDefault(emptyList<X509Certificate>())
-    val softReaderTrustStore = SoftReaderTrustStore(readerTrustStore, logController)
-
     return EudiWallet(
         context = context,
         config = walletCoreConfig.config,
@@ -73,7 +72,14 @@ fun provideEudiWallet(
         withLogger(walletCoreLogController)
         withTransactionLogger(walletCoreTransactionLogController)
         withKtorHttpClientFactory { httpClient }
-        withReaderTrustStore(softReaderTrustStore)
+        if (configLogic.appBuildType == AppBuildType.DEBUG) {
+            val devCas = loadDevCas(context)
+            if (devCas.isNotEmpty()) {
+                withReaderTrustStore(ReaderTrustStore.getDefault(devCas))
+            }
+        }
+        // In RELEASE builds: no withReaderTrustStore() call here.
+        // configureReaderTrustStore() in WalletCoreConfigImpl provides the production trust anchors.
     }
 }
 
@@ -81,6 +87,31 @@ fun provideEudiWallet(
 fun provideWalletCoreConfig(
     context: Context,
 ): WalletCoreConfig = WalletCoreConfigImpl(context)
+
+/**
+ * Loads all CA certificates from `assets/ewqwe_dev_cas/` for use in the debug Reader Trust Store.
+ * Any `.pem` or `.crt` file dropped into that directory is automatically trusted — no code change
+ * needed when adding a new developer CA.
+ *
+ * **Only called in DEBUG builds.**
+ */
+private fun loadDevCas(context: Context): List<X509Certificate> {
+    val certFactory = CertificateFactory.getInstance("X.509")
+    val certs = mutableListOf<X509Certificate>()
+    try {
+        val files = context.assets.list("ewqwe_dev_cas") ?: return emptyList()
+        for (fileName in files) {
+            if (!fileName.endsWith(".pem") && !fileName.endsWith(".crt")) continue
+            context.assets.open("ewqwe_dev_cas/$fileName").use { stream ->
+                @Suppress("UNCHECKED_CAST")
+                certs.addAll(certFactory.generateCertificates(stream) as Collection<X509Certificate>)
+            }
+        }
+    } catch (_: Exception) {
+        // Missing directory or unreadable file — return whatever was loaded so far
+    }
+    return certs
+}
 
 @Single
 fun provideWalletCoreLogController(logController: LogController): WalletCoreLogController =

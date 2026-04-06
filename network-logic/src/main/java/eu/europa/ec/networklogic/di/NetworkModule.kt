@@ -16,6 +16,7 @@
 
 package eu.europa.ec.networklogic.di
 
+import android.content.Context
 import eu.europa.ec.businesslogic.config.AppBuildType
 import eu.europa.ec.businesslogic.config.ConfigLogic
 import eu.europa.ec.networklogic.repository.WalletAttestationRepository
@@ -33,11 +34,12 @@ import kotlinx.serialization.json.Json
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Module
 import org.koin.core.annotation.Single
-import java.security.SecureRandom
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 @Module
@@ -52,24 +54,23 @@ fun provideJson(): Json = Json {
 }
 
 @Single
-fun provideHttpClient(json: Json, configLogic: ConfigLogic): HttpClient {
+fun provideHttpClient(context: Context, json: Json, configLogic: ConfigLogic): HttpClient {
     return HttpClient(Android) {
 
-//        if (configLogic.appBuildType == AppBuildType.DEBUG) {
-            engine {
-                sslManager = { connection ->
-                    val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-                        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                    })
-                    val sslContext = SSLContext.getInstance("TLS")
-                    sslContext.init(null, trustAllCerts, SecureRandom())
-                    connection.sslSocketFactory = sslContext.socketFactory
-                    connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+        if (configLogic.appBuildType == AppBuildType.DEBUG) {
+            val devTrustManager = buildDevTrustManager(context)
+            if (devTrustManager != null) {
+                engine {
+                    sslManager = { connection ->
+                        val sslContext = SSLContext.getInstance("TLS")
+                        sslContext.init(null, arrayOf<TrustManager>(devTrustManager), null)
+                        connection.sslSocketFactory = sslContext.socketFactory
+                        // No HostnameVerifier override — standard hostname checking applies
+                        // (trusted cert SANs must match the server hostname)
+                    }
                 }
             }
-//        }
+        }
 
         install(Logging) {
             logger = Logger.DEFAULT
@@ -91,3 +92,42 @@ fun provideHttpClient(json: Json, configLogic: ConfigLogic): HttpClient {
 @Single
 fun provideWalletAttestationRepository(httpClient: HttpClient): WalletAttestationRepository =
     WalletAttestationRepositoryImpl(httpClient)
+
+/**
+ * Builds an [X509TrustManager] that trusts only the CA certificates found in
+ * `assets/ewqwe_dev_cas/`. Any `.pem` or `.crt` file placed in that directory is
+ * automatically picked up at runtime — no code change needed when adding a new dev CA.
+ *
+ * Returns `null` if the directory is absent or contains no valid certificates, which causes
+ * the caller to skip the custom SSL configuration and fall back to the system trust store.
+ *
+ * **Only called in DEBUG builds.**
+ */
+private fun buildDevTrustManager(context: Context): X509TrustManager? {
+    val assetManager = context.assets
+    val certFactory = CertificateFactory.getInstance("X.509")
+    val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).also { it.load(null, null) }
+    var certCount = 0
+
+    try {
+        val files = assetManager.list("ewqwe_dev_cas") ?: return null
+        for (fileName in files) {
+            if (!fileName.endsWith(".pem") && !fileName.endsWith(".crt")) continue
+            assetManager.open("ewqwe_dev_cas/$fileName").use { stream ->
+                @Suppress("UNCHECKED_CAST")
+                val certs = certFactory.generateCertificates(stream) as Collection<X509Certificate>
+                for (cert in certs) {
+                    keyStore.setCertificateEntry("ewqwe_dev_ca_${certCount++}", cert)
+                }
+            }
+        }
+    } catch (_: Exception) {
+        return null
+    }
+
+    if (certCount == 0) return null
+
+    val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+    tmf.init(keyStore)
+    return tmf.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
+}
